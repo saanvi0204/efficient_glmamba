@@ -25,6 +25,18 @@ def _run_diagnostics(device: torch.device) -> None:
     print("DIAGNOSTICS: verifying critical components")
     print("=" * 50)
 
+    # --- 0. GPU info ---
+    print("\n[0] GPU status:")
+    print(f"  CUDA available: {torch.cuda.is_available()}")
+    if torch.cuda.is_available():
+        print(f"  Device count:   {torch.cuda.device_count()}")
+        print(f"  Current device: {torch.cuda.current_device()}")
+        print(f"  GPU name:       {torch.cuda.get_device_name(0)}")
+        mem = torch.cuda.get_device_properties(0).total_mem / 1024**3
+        print(f"  GPU memory:     {mem:.1f} GB")
+    else:
+        print("  WARNING: No GPU detected — training will run on CPU!")
+
     # --- 1. DeformConv2d / DeformBlock ---
     print("\n[1/2] DeformBlock (torchvision.ops.DeformConv2d) ...")
     try:
@@ -115,6 +127,9 @@ def main() -> None:
 
     seed_everything(SeedConfig(seed=args.seed, deterministic=args.deterministic))
 
+    diag_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    _run_diagnostics(diag_device)
+
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -177,9 +192,6 @@ def main() -> None:
         log_every_n_steps=10,
         enable_checkpointing=True,
     )
-
-    diag_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    _run_diagnostics(diag_device)
 
     trainer.fit(module, datamodule=dm, ckpt_path=args.resume)
 

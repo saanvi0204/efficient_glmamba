@@ -55,7 +55,7 @@ def _run_diagnostics(device: torch.device) -> None:
     try:
         from glmamba.models.ss2d import SS2D
 
-        ss = SS2D(d_model=16).to(device)
+        ss = SS2D(dim=16).to(device)
         x = torch.randn(1, 16, 8, 8, device=device)
         y = ss(x)
         print(f"  input  shape: {tuple(x.shape)}")

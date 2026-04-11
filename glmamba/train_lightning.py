@@ -19,6 +19,58 @@ from glmamba.lightning_module import GLMambaLightningConfig, GLMambaLightningMod
 from glmamba.utils.seed import SeedConfig, seed_everything
 
 
+def _run_diagnostics(device: torch.device) -> None:
+    """Smoke-test DeformBlock and selective_scan_cuda before training."""
+    print("=" * 50)
+    print("DIAGNOSTICS: verifying critical components")
+    print("=" * 50)
+
+    # --- 1. DeformConv2d / DeformBlock ---
+    print("\n[1/2] DeformBlock (torchvision.ops.DeformConv2d) ...")
+    try:
+        from glmamba.models.layers import DeformBlock
+
+        blk = DeformBlock(channels=16, kernel_size=3).to(device)
+        x = torch.randn(1, 16, 8, 8, device=device)
+        y = blk(x)
+        print(f"  input  shape: {tuple(x.shape)}")
+        print(f"  output shape: {tuple(y.shape)}")
+        assert y.shape == x.shape, f"shape mismatch: expected {x.shape}, got {y.shape}"
+        assert torch.isfinite(y).all(), "output contains NaN/Inf"
+        print("  => DeformBlock OK")
+    except Exception as exc:
+        print(f"  => DeformBlock FAILED: {exc}")
+
+    # --- 2. selective_scan_cuda / SS2D ---
+    print("\n[2/2] SS2D (selective_scan_cuda) ...")
+    try:
+        import selective_scan_cuda
+
+        print(f"  selective_scan_cuda module loaded: {selective_scan_cuda}")
+    except ImportError as exc:
+        print(f"  => selective_scan_cuda import FAILED: {exc}")
+        print("=" * 50)
+        return
+
+    try:
+        from glmamba.models.ss2d import SS2D
+
+        ss = SS2D(d_model=16).to(device)
+        x = torch.randn(1, 16, 8, 8, device=device)
+        y = ss(x)
+        print(f"  input  shape: {tuple(x.shape)}")
+        print(f"  output shape: {tuple(y.shape)}")
+        assert y.shape == x.shape, f"shape mismatch: expected {x.shape}, got {y.shape}"
+        assert torch.isfinite(y).all(), "output contains NaN/Inf"
+        print("  => SS2D OK")
+    except Exception as exc:
+        print(f"  => SS2D FAILED: {exc}")
+
+    print("=" * 50)
+    print("DIAGNOSTICS complete")
+    print("=" * 50, flush=True)
+
+
 def build_argparser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser("glmamba-train-lightning")
     p.add_argument("--data-root", type=str, required=True)
@@ -125,6 +177,9 @@ def main() -> None:
         log_every_n_steps=10,
         enable_checkpointing=True,
     )
+
+    diag_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    _run_diagnostics(diag_device)
 
     trainer.fit(module, datamodule=dm, ckpt_path=args.resume)
 

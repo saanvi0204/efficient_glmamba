@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "glmamba"
+version = "0.1.0"
+description = "GLMamba training and model code"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+  "torch",
+  "torchvision",
+  "pytorch-lightning",
+  "numpy<2,>=1.21",
+  "tqdm",
+  "pyyaml",
+  "nibabel",
+]
+
+[tool.setuptools.packages.find]
+include = ["glmamba*"]
+
+

@@ -1,0 +1,7 @@
+torch
+torchvision
+pytorch-lightning
+numpy>=1.21,<2
+tqdm
+pyyaml
+nibabel

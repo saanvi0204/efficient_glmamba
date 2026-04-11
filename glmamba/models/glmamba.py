@@ -10,6 +10,18 @@ from .layers import DeformBlock, Modulator, MultiModalityFusion, PatchEmbed2x2, 
 from .mamba_block import LocalMamba2D, MambaBlock2D
 
 
+def _evs_undo_last(x: torch.Tensor, n_blocks: int) -> torch.Tensor:
+    """Undo the spatial transform left by the last EVSSM block so features
+    align back to the original (H, W) orientation before fusion/modulation."""
+    last_idx = n_blocks - 1
+    if last_idx % 2 == 0:
+        # last block applied transpose → undo with transpose
+        return x.transpose(2, 3).contiguous()
+    else:
+        # last block applied flip → undo with flip (self-inverse)
+        return torch.flip(x, dims=(2, 3)).contiguous()
+
+
 @dataclass(frozen=True)
 class GLMambaConfig:
     in_ch: int = 1
@@ -76,6 +88,8 @@ class GLMamba(nn.Module):
         f_lr_m = f_lr
         for i, blk in enumerate(self.g_mamba):
             f_lr_m = blk(f_lr_m, block_idx=i)
+        # Undo the last EVSSM transform so f_lr_m is back in (H, W) space
+        f_lr_m = _evs_undo_last(f_lr_m, self.cfg.n_blocks)
         f_lr_d = self.g_deform(f_lr)
         f_lr_mod = self.mod_g(f_lr_d, f_lr_m)
 
@@ -83,6 +97,8 @@ class GLMamba(nn.Module):
         f_ref_m = f_ref
         for i, blk in enumerate(self.l_mamba):
             f_ref_m = blk(f_ref_m, block_idx=i)
+        # Undo the last EVSSM transform so f_ref_m is back in (H, W) space
+        f_ref_m = _evs_undo_last(f_ref_m, self.cfg.n_blocks)
         f_ref_d = self.l_deform(f_ref)
         f_ref_mod = self.mod_l(f_ref_d, f_ref_m)
 

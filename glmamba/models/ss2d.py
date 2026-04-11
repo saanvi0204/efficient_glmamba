@@ -862,7 +862,7 @@ class SS2D(nn.Module, SS2Dv2):
         d_state: int = 16,
         ssm_ratio: float = 2.0,
         dt_rank: Any = "auto",
-        d_conv: int = 1,
+        d_conv: int = 3,
         forward_type: str = "v05",
         channel_first: bool = True,
     ) -> None:
@@ -873,7 +873,7 @@ class SS2D(nn.Module, SS2Dv2):
             d_state=d_state,
             ssm_ratio=ssm_ratio,
             dt_rank=dt_rank,
-            act_layer=nn.SiLU,
+            act_layer=nn.GELU,
             d_conv=d_conv,
             conv_bias=True,
             dropout=0.0,

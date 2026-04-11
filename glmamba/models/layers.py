@@ -154,10 +154,14 @@ class MultiModalityFusion(nn.Module):
         f_fuse_sim = f_lr * f_ref
 
         # Eqs. (8–9): complementary weights then weighted sum of modalities
-        z = self.comp_conv(torch.cat([f_lr, f_ref], dim=1))
-        w_pair = torch.softmax(z, dim=1)
+        # Softmax across the 2-modality dimension per channel so w_lr[c] + w_ref[c] = 1
+        B = f_lr.shape[0]
         c = f_lr.shape[1]
-        w_lr, w_ref = w_pair[:, :c], w_pair[:, c:]
+        z = self.comp_conv(torch.cat([f_lr, f_ref], dim=1))  # (B, 2C, H, W)
+        z = z.view(B, 2, c, z.shape[2], z.shape[3])
+        w_pair = torch.softmax(z, dim=1)  # softmax over modality pair
+        w_lr = w_pair[:, 0]   # (B, C, H, W)
+        w_ref = w_pair[:, 1]  # (B, C, H, W)
         f_fuse_com = f_lr * w_lr + f_ref * w_ref
 
         # Eqs. (10–11): GMP over spatial dims per channel, then FC + softmax → three scalars per batch

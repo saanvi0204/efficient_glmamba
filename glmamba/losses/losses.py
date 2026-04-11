@@ -18,7 +18,7 @@ class CELoss(nn.Module):
     def __init__(self) -> None:
         super().__init__()
         k1 = torch.tensor([[0, -1, 0], [-1, 4, -1], [0, -1, 0]], dtype=torch.float32)
-        k2 = torch.tensor([[-1, 0, -1], [0, 4, 0], [-1, 0, 1]], dtype=torch.float32)
+        k2 = torch.tensor([[-1, 0, -1], [0, 4, 0], [-1, 0, -1]], dtype=torch.float32)
         k3 = torch.tensor([[1, 1, 1], [1, -8, 1], [1, 1, 1]], dtype=torch.float32)
         kernels = torch.stack([k1, k2, k3], dim=0)  # (3,3,3)
         self.register_buffer("kernels", kernels, persistent=False)
@@ -37,13 +37,14 @@ class CELoss(nn.Module):
         # We'll do grouped conv with groups=C using weight shaped (C*3,1,3,3) and
         # input shaped (B,C,H,W) after repeating channels 3x via unfold trick.
         # Instead: compute per-kernel conv with groups=C and average.
+        # Paper Eq.14: (1/3) Σ_i ||E_i⊙SR − E_i⊙HR||²  (mean squared error per kernel)
         losses = []
         for i in range(3):
             wi = self.kernels[i].to(sr.dtype).to(sr.device)[None, None, :, :]  # (1,1,3,3)
             wi = wi.repeat(C, 1, 1, 1)  # (C,1,3,3)
             sr_e = F.conv2d(sr, wi, padding=1, groups=C)
             hr_e = F.conv2d(hr, wi, padding=1, groups=C)
-            losses.append(F.mse_loss(sr_e, hr_e, reduction="mean"))
+            losses.append(F.mse_loss(sr_e, hr_e))
         return sum(losses) / 3.0
 
 

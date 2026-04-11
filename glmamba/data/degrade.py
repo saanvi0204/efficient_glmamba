@@ -40,6 +40,8 @@ def degrade_frequency_domain(hr: torch.Tensor, scale: int) -> torch.Tensor:
     k_crop = _center_crop2d(k, H2, W2)
     k_crop = torch.fft.ifftshift(k_crop, dim=(-2, -1))
     lr_c = torch.fft.ifft2(k_crop, dim=(-2, -1))
-    lr = lr_c.real
+    # Compensate for energy change after k-space crop: IFFT divides by H'*W' instead
+    # of H*W, inflating pixel values by scale². Rescale to preserve intensity range.
+    lr = lr_c.real / (scale * scale)
     return lr
 

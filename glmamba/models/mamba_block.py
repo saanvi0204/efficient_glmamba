@@ -32,33 +32,31 @@ class MambaBlock2D(nn.Module):
         self.ss2d = SS2D(channels)
         self.p2_norm = LayerNorm(channels, channel_first=True)
 
+        self.post_gate = nn.Conv2d(channels, channels, kernel_size=1, bias=True)
         self.ca = ChannelAttention(channels)
 
     @staticmethod
     def _evs_transform(x: torch.Tensor, block_idx: int) -> torch.Tensor:
-        # EVSSM EVS schedule: alternate transpose and flip to expose different scan directions
-        if (block_idx % 2) == 0:
-            return x.transpose(2, 3)
-        return torch.flip(x, dims=(2, 3))
-
-    @staticmethod
-    def _evs_inverse(x: torch.Tensor, block_idx: int) -> torch.Tensor:
-        # transpose and flip are self-inverse
-        if (block_idx % 2) == 0:
-            return x.transpose(2, 3)
-        return torch.flip(x, dims=(2, 3))
+        """EVSSM scan schedule: alternate transpose and flip on the full block input.
+        The transform is NOT inverted — the next block's opposite transform implicitly
+        re-orients the feature map (see EVSSM CVPR 2025, EVS block)."""
+        if block_idx % 2 == 0:
+            return x.transpose(2, 3).contiguous()
+        return torch.flip(x, dims=(2, 3)).contiguous()
 
     def forward(self, x: torch.Tensor, *, block_idx: int = 0) -> torch.Tensor:
+        # Apply EVSSM flip/transpose on the full input (not inverted)
+        x = self._evs_transform(x, block_idx)
+
         h = self.ln(x)
         a = self.p1(h)
         b = self.p2_in(h)
         b = self.p2_dw(b)
         b = self.p2_act(b)
-        b = self._evs_transform(b, block_idx)
         b = self.ss2d(b)
-        b = self._evs_inverse(b, block_idx)
         b = self.p2_norm(b)
         y = a * b
+        y = self.post_gate(y)
         y = self.ca(y)
         return x + y
 

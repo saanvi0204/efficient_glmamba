@@ -32,7 +32,7 @@ def _run_diagnostics(device: torch.device) -> None:
         print(f"  Device count:   {torch.cuda.device_count()}")
         print(f"  Current device: {torch.cuda.current_device()}")
         print(f"  GPU name:       {torch.cuda.get_device_name(0)}")
-        mem = torch.cuda.get_device_properties(0).total_mem / 1024**3
+        mem = torch.cuda.get_device_properties(0).total_memory / 1024**3
         print(f"  GPU memory:     {mem:.1f} GB")
     else:
         print("  WARNING: No GPU detected — training will run on CPU!")

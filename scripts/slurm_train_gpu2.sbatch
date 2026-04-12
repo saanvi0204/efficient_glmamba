@@ -21,6 +21,7 @@ cd "$REPO_ROOT"
 export PYTHONPATH="$REPO_ROOT${PYTHONPATH:+:$PYTHONPATH}"
 
 module purge
+module load gcc/11.1.0
 module load spack/0.17
 module load cuda/11.8.0-gcc-14.2.0-dldp
 module load python/python3.10

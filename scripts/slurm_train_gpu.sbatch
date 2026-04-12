@@ -6,7 +6,7 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=8
 #SBATCH --gres=gpu:1
-#SBATCH --time=00:05:00
+#SBATCH --time=00:10:00
 #SBATCH --output=glmamba-train.%j.out
 #SBATCH --error=glmamba-train.%j.err
 #SBATCH --export=ALL

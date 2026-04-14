@@ -30,8 +30,10 @@ conda activate glmamba
 
 export LD_LIBRARY_PATH="$CONDA_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
-# Lightning reads these SLURM env vars automatically for multi-node DDP
-export MASTER_PORT=$(( 29500 + RANDOM % 100 ))
+# Multi-node DDP: all nodes must agree on the same MASTER_ADDR and MASTER_PORT
+# SLURM_NODELIST gives e.g. "node[01-04]" — extract the first node as master
+export MASTER_ADDR=$(scontrol show hostnames "$SLURM_NODELIST" | head -n 1)
+export MASTER_PORT=29500
 
 srun --export=ALL python -m glmamba.train_lightning \
   --data-root "/scratch/$USER/brats2021" \

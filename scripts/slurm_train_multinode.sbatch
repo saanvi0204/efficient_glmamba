@@ -40,7 +40,7 @@ srun --export=ALL python -m glmamba.train_lightning \
   --out-dir "/scratch/$USER/glmamba_runs/run_multinode" \
   --scale 2 \
   --epochs 50 \
-  --batch-size 4 \
+  --batch-size 2 \
   --num-workers 8 \
   --lr 2e-4 \
   --amp \

@@ -5,10 +5,11 @@ from pathlib import Path
 
 import torch
 from torch.utils.data import DataLoader
+from torchmetrics.image import PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure
 from tqdm import tqdm
 
 from glmamba.data import BraTS2021SliceDataset, BraTS2021SliceDatasetConfig
-from glmamba.metrics import nmse, psnr, ssim
+from glmamba.lightning_module import NormalizedMeanSquaredError
 from glmamba.models import GLMamba, GLMambaConfig
 from glmamba.utils.checkpoint import load_checkpoint
 from glmamba.utils.device import get_device
@@ -49,30 +50,62 @@ def main() -> None:
     )
 
     model = GLMamba(GLMambaConfig()).to(device)
+    
+    # Handle both Lightning (.ckpt) and regular (.pt) checkpoints
     ckpt = load_checkpoint(args.checkpoint, map_location=device)
-    model.load_state_dict(ckpt["model"])
+    
+    if "state_dict" in ckpt:
+        # Lightning checkpoint - extract model weights
+        state_dict = {}
+        for key, value in ckpt["state_dict"].items():
+            if key.startswith("model."):
+                # Remove "model." prefix
+                state_dict[key[6:]] = value
+        model.load_state_dict(state_dict)
+        print(f"Loaded Lightning checkpoint from epoch {ckpt.get('epoch', 'unknown')}")
+    elif "model" in ckpt:
+        # Regular checkpoint
+        model.load_state_dict(ckpt["model"])
+        print(f"Loaded regular checkpoint from epoch {ckpt.get('epoch', 'unknown')}")
+    else:
+        raise ValueError("Checkpoint format not recognized. Expected 'state_dict' or 'model' key.")
+    
     model.eval()
 
-    agg = {"psnr": 0.0, "ssim": 0.0, "nmse": 0.0, "n": 0.0}
+    # Stateful TorchMetrics — exact match with Lightning validation_step
+    metric_psnr = PeakSignalNoiseRatio(data_range=1.0).to(device)
+    metric_ssim = StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
+    metric_nmse = NormalizedMeanSquaredError().to(device)
+
+    n_images = 0
     for batch in tqdm(dl, desc="eval"):
         lr = batch["lr"].to(device)
         hr = batch["hr"].to(device)
         ref = batch["ref"].to(device)
         with torch.no_grad():
             sr, _ = model(lr, ref)
-        agg["psnr"] += psnr(sr.clamp(0, 1), hr.clamp(0, 1), data_range=1.0)
-        agg["ssim"] += ssim(sr.clamp(0, 1), hr.clamp(0, 1), data_range=1.0)
-        agg["nmse"] += nmse(sr, hr)
-        agg["n"] += 1.0
-    n = max(1.0, agg["n"])
-    print(
-        {
-            "psnr": agg["psnr"] / n,
-            "ssim": agg["ssim"] / n,
-            "nmse": agg["nmse"] / n,
-            "num_samples": int(n),
-        }
-    )
+        sr_clamped = sr.clamp(0, 1)
+        hr_clamped = hr.clamp(0, 1)
+        metric_psnr.update(sr_clamped, hr_clamped)
+        metric_ssim.update(sr_clamped, hr_clamped)
+        metric_nmse.update(sr, hr)
+        n_images += lr.shape[0]
+
+    final_psnr = float(metric_psnr.compute().item())
+    final_ssim = float(metric_ssim.compute().item())
+    final_nmse = float(metric_nmse.compute().item())
+
+    print("\n" + "=" * 60)
+    print("EVALUATION RESULTS")
+    print("=" * 60)
+    print(f"Number of images: {n_images}")
+    print(f"PSNR:  {final_psnr:.4f} dB")
+    print(f"SSIM:  {final_ssim:.6f}")
+    print(f"NMSE:  {final_nmse:.8f}")
+    print("=" * 60)
+
+    results = {"psnr": final_psnr, "ssim": final_ssim, "nmse": final_nmse, "num_images": n_images}
+    print(f"\nJSON: {results}")
 
 
 if __name__ == "__main__":

@@ -70,6 +70,7 @@ class BraTS2021SliceDataModule(pl.LightningDataModule):
             num_workers=self.cfg.num_workers,
             pin_memory=torch.cuda.is_available(),
             drop_last=True,
+            persistent_workers=self.cfg.num_workers > 0,
         )
 
     def val_dataloader(self) -> DataLoader:
@@ -80,5 +81,6 @@ class BraTS2021SliceDataModule(pl.LightningDataModule):
             shuffle=False,
             num_workers=max(0, self.cfg.num_workers // 2),
             pin_memory=torch.cuda.is_available(),
+            persistent_workers=self.cfg.num_workers > 0,
         )
 

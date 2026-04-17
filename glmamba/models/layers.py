@@ -45,7 +45,7 @@ class ChannelAttention(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x: (B,C,H,W)
-        w = F.adaptive_avg_pool2d(x, 1)
+        w = F.adaptive_avg_pool2d(x, 1).contiguous()
         w = F.silu(self.fc1(w))
         w = torch.sigmoid(self.fc2(w))
         return x * w

@@ -48,7 +48,6 @@ def _list_subject_dirs(root: Path) -> list[str]:
 
 
 def _make_split(root: Path, seed: int) -> tuple[list[str], list[str]]:
-    # If no explicit split is provided: stable random split (approx. paper ratio 419/575 ~ 0.7287)
     ids = _list_subject_dirs(root)
     if len(ids) < 2:
         raise RuntimeError("Not enough subjects to split.")

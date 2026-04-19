@@ -32,12 +32,6 @@ class CELoss(nn.Module):
         k = k[:, None, :, :]  # (3,1,3,3)
         k = k.repeat(C, 1, 1, 1)  # (3*C,1,3,3)
 
-        # group conv: apply 3 filters per channel by reshaping
-        # reshape input to (B*C,1,H,W) then conv with (3*C,1,3,3) groups=C? simpler:
-        # We'll do grouped conv with groups=C using weight shaped (C*3,1,3,3) and
-        # input shaped (B,C,H,W) after repeating channels 3x via unfold trick.
-        # Instead: compute per-kernel conv with groups=C and average.
-        # Paper Eq.14: (1/3) Σ_i ||E_i⊙SR − E_i⊙HR||²  (mean squared error per kernel)
         losses = []
         for i in range(3):
             wi = self.kernels[i].to(sr.dtype).to(sr.device)[None, None, :, :]  # (1,1,3,3)
@@ -57,7 +51,7 @@ class GLMambaLossConfig:
 
 class GLMambaLoss(nn.Module):
     """
-    Paper Eq.15: alpha*L1(sr,hr) + beta*L1(rec_ref,ref) + gamma*CELoss(sr,hr)
+    L = alpha*L1(sr,hr) + beta*L1(rec_ref,ref) + gamma*CELoss(sr,hr)
     """
 
     def __init__(self, cfg: GLMambaLossConfig | None = None) -> None:

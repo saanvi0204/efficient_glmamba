@@ -15,7 +15,7 @@ def _center_crop2d(x: torch.Tensor, out_h: int, out_w: int) -> torch.Tensor:
 @torch.no_grad()
 def degrade_frequency_domain(hr: torch.Tensor, scale: int) -> torch.Tensor:
     """
-    Frequency-domain degradation to generate LR samples (paper: "frequency domain method").
+    Frequency-domain degradation to generate LR samples
 
     Args:
       hr: (H,W) or (...,H,W) real tensor

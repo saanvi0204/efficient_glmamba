@@ -14,13 +14,12 @@ from .degrade import degrade_frequency_domain
 @dataclass(frozen=True)
 class BraTS2021SliceDatasetConfig:
     root_dir: str
-    split: str = "train"  # "train" | "test"
-    subjects_list: str | None = None  # optional text file with one subject id per line
-    scale: int = 2  # 2 or 4
+    split: str = "train"  
+    subjects_list: str | None = None  
+    scale: int = 2  
     target_modality: str = "t2"
     ref_modality: str = "t1"
-    # normalization
-    normalize: str = "minmax"  # "zscore_nonzero" | "minmax" | "none"
+    normalize: str = "minmax"
     eps: float = 1e-8
 
 
@@ -87,7 +86,7 @@ class BraTS2021SliceDataset(Dataset[dict[str, torch.Tensor]]):
             raise ValueError("scale must be 2 or 4")
 
         self.subject_dirs = self._resolve_subject_dirs()
-        self.samples: list[tuple[int, int]] = []  # (subject_idx, z)
+        self.samples: list[tuple[int, int]] = []  
         self._build_index()
 
     def _resolve_subject_dirs(self) -> list[Path]:
@@ -101,7 +100,6 @@ class BraTS2021SliceDataset(Dataset[dict[str, torch.Tensor]]):
                 dirs.append(p)
             return dirs
 
-        # fallback: use all directories under root
         dirs = [p for p in sorted(self.root.iterdir()) if p.is_dir()]
         if not dirs:
             raise FileNotFoundError(f"No subject directories found under {self.root}")
@@ -130,7 +128,6 @@ class BraTS2021SliceDataset(Dataset[dict[str, torch.Tensor]]):
         t_img = nib.load(str(t_path))
         r_img = nib.load(str(r_path))
 
-        # Use proxy access to avoid loading full volume eagerly; copy so array is writable (avoids PyTorch warning)
         hr_np = np.asarray(t_img.dataobj[:, :, z], dtype=np.float32).copy()
         ref_np = np.asarray(r_img.dataobj[:, :, z], dtype=np.float32).copy()
 

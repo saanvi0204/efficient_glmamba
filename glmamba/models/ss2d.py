@@ -1,4 +1,3 @@
-# Vendored from VMamba/vmamba.py (MzeroMiko). Minimal SS2D stack: PyTorch cross-scan + selective scan.
 from __future__ import annotations
 
 import math
@@ -482,7 +481,6 @@ class mamba_init:
     def dt_init(dt_rank, d_inner, dt_scale=1.0, dt_init="random", dt_min=0.001, dt_max=0.1, dt_init_floor=1e-4):
         dt_proj = nn.Linear(dt_rank, d_inner, bias=True)
 
-        # Initialize special dt projection to preserve variance at initialization
         dt_init_std = dt_rank**-0.5 * dt_scale
         if dt_init == "constant":
             nn.init.constant_(dt_proj.weight, dt_init_std)
@@ -496,12 +494,9 @@ class mamba_init:
             torch.rand(d_inner) * (math.log(dt_max) - math.log(dt_min))
             + math.log(dt_min)
         ).clamp(min=dt_init_floor)
-        # Inverse of softplus: https://github.com/pytorch/pytorch/issues/72759
         inv_dt = dt + torch.log(-torch.expm1(-dt))
         with torch.no_grad():
             dt_proj.bias.copy_(inv_dt)
-        # Our initialization would set all Linear.bias to zero, need to mark this one as _no_reinit
-        # dt_proj.bias._no_reinit = True
         
         return dt_proj
 
@@ -637,16 +632,9 @@ class SS2Dv2:
         self.x_proj = Linear(self.d_inner, self.k_group * (self.dt_rank + self.d_state * 2), groups=self.k_group, bias=False, channel_first=True)
         self.dt_projs = Linear(self.dt_rank, self.k_group * self.d_inner, groups=self.k_group, bias=False, channel_first=True)
 
-        # EVSSM-style local mixing on (dt,B,C) projections (depthwise Conv1d over sequence length)
+        # Local mixing on (dt,B,C) projections (depthwise Conv1d over sequence length)
         packed = self.dt_rank + self.d_state * 2
         self.x_conv = nn.Conv1d(packed, packed, kernel_size=7, padding=3, groups=packed, bias=True)
-          
-        # self.x_proj = [
-        #     nn.Linear(self.d_inner, (self.dt_rank + self.d_state * 2), bias=False)
-        #     for _ in range(self.k_group)
-        # ]
-        # self.x_proj_weight = nn.Parameter(torch.stack([t.weight for t in self.x_proj], dim=0)) # (K, N, inner)
-        # del self.x_proj
         
         # out proj =======================================
         self.out_act = nn.GELU() if self.oact else nn.Identity()
@@ -706,7 +694,7 @@ class SS2Dv2:
             return selective_scan_fn(u, delta, A, B, C, D, delta_bias, delta_softplus, ssoflex, backend=selective_scan_backend)
         
         if self.k_group == 1:
-            # EVS single-direction scan: row-major flatten only (no 4-direction cross-scan materialization)
+            # Single-direction scan: row-major flatten only (no 4-direction cross-scan materialization)
             xs = x.view(B, -1, L)  # (B, d_inner, L)
 
             x_dbl = self.x_proj(xs)  # (B, R+2N, L)
@@ -748,7 +736,7 @@ class SS2Dv2:
         else:
             xs = cross_scan_fn(x, in_channel_first=True, out_channel_first=True, scans=_scan_mode, force_torch=scan_force_torch)
             x_dbl = self.x_proj(xs.view(B, -1, L))
-            # apply EVSSM-style x_conv per scan group on packed (dt,B,C)
+            # apply conv per scan group on packed (dt,B,C)
             x_dbl = x_dbl.view(B, K, -1, L)
             x_dbl = self.x_conv(x_dbl.reshape(B * K, -1, L)).view(B, K, -1, L)
             dts, Bs, Cs = torch.split(x_dbl, [R, N, N], dim=2)
@@ -852,7 +840,7 @@ class SS2Dv2:
 
 
 class SS2D(nn.Module, SS2Dv2):
-    """2D selective scan for GLMamba; NCHW input (``channel_first=True``)."""
+    """2D selective scan; NCHW input (``channel_first=True``)."""
 
     def __init__(
         self,

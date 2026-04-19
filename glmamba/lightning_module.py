@@ -57,7 +57,7 @@ class GLMambaLightningConfig:
 
 class GLMambaLightningModule(pl.LightningModule):
     """
-    Lightning wrapper for GLMamba that mirrors glmamba/train.py behavior:
+    Lightning wrapper:
     - loss: alpha*L1(sr,hr) + beta*L1(rec_ref,ref) + gamma*CELoss(sr,hr)
     - val metrics: PSNR/SSIM on clamped [0,1], NMSE on raw tensors
     """
@@ -109,16 +109,16 @@ class GLMambaLightningModule(pl.LightningModule):
 
         sr, _ = self(lr, ref)
 
-        # Clamp for PSNR/SSIM (match glmamba/train.py behavior)
+        # Clamp for PSNR/SSIM
         sr_clamped = sr.clamp(0, 1)
         hr_clamped = hr.clamp(0, 1)
 
-        # Update metrics (stateful - accumulates across batches)
+        # Update metrics
         self.val_psnr(sr_clamped, hr_clamped)
         self.val_ssim(sr_clamped, hr_clamped)
         self.val_nmse(sr, hr)
 
-        # Log metrics (automatically synced across GPUs in DDP)
+        # Log metrics
         self.log("val/psnr", self.val_psnr, on_step=False, on_epoch=True, prog_bar=True)
         self.log("val/ssim", self.val_ssim, on_step=False, on_epoch=True, prog_bar=False)
         self.log("val/nmse", self.val_nmse, on_step=False, on_epoch=True, prog_bar=False)

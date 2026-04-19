@@ -9,13 +9,13 @@ from .ss2d import SS2D
 
 class MambaBlock2D(nn.Module):
     """
-    Paper Fig. 2(A): layer norm → two paths —
+    layer norm → two paths —
       path1: linear (1×1 conv) + activation;
       path2: linear, depthwise separable (here: 1×1 + depthwise 3×3), activation, SS2D, layer norm;
       multiply paths; channel attention; residual add.
     """
 
-    def __init__(self, channels: int) -> None:
+    def __init__(self, channels: int, k_group: int = 4, forward_type: str = "v05") -> None:
         super().__init__()
         self.channels = channels
 
@@ -29,7 +29,7 @@ class MambaBlock2D(nn.Module):
         self.p2_in = nn.Conv2d(channels, channels, kernel_size=1, bias=True)
         self.p2_dw = nn.Conv2d(channels, channels, kernel_size=3, padding=1, groups=channels, bias=True)
         self.p2_act = nn.SiLU()
-        self.ss2d = SS2D(channels)
+        self.ss2d = SS2D(channels, k_group=k_group, forward_type=forward_type)
         self.p2_norm = LayerNorm(channels, channel_first=True)
 
         self.post_gate = nn.Conv2d(channels, channels, kernel_size=1, bias=True)
@@ -37,15 +37,12 @@ class MambaBlock2D(nn.Module):
 
     @staticmethod
     def _evs_transform(x: torch.Tensor, block_idx: int) -> torch.Tensor:
-        """EVSSM scan schedule: alternate transpose and flip on the full block input.
-        The transform is NOT inverted — the next block's opposite transform implicitly
-        re-orients the feature map (see EVSSM CVPR 2025, EVS block)."""
         if block_idx % 2 == 0:
             return x.transpose(2, 3).contiguous()
         return torch.flip(x, dims=(2, 3)).contiguous()
 
     def forward(self, x: torch.Tensor, *, block_idx: int = 0) -> torch.Tensor:
-        # Apply EVSSM flip/transpose on the full input (not inverted)
+        # Apply flip/transpose on the full input
         x = self._evs_transform(x, block_idx)
 
         h = self.ln(x)
@@ -63,15 +60,17 @@ class MambaBlock2D(nn.Module):
 
 class LocalMamba2D(nn.Module):
     """
-    Local Mamba (paper Fig. 3(B)): partition the feature map into four spatial quadrants
+    Local Mamba: partition the feature map into four spatial quadrants
     (top-left, top-right, bottom-left, bottom-right), run a Mamba block in each, then merge.
     Odd H/W use floor/ceil halves via ``split`` so every pixel belongs to exactly one quadrant.
-    Four blocks give independent parameters per quadrant (“independently learn” in the paper).
     """
 
     def __init__(self, channels: int) -> None:
         super().__init__()
-        self.blocks = nn.ModuleList(MambaBlock2D(channels) for _ in range(4))
+        self.blocks = nn.ModuleList(
+           MambaBlock2D(channels, k_group=4, forward_type="v052d")  # bidi within quadrant
+           for _ in range(4)
+        )
 
     def forward(self, x: torch.Tensor, *, block_idx: int = 0) -> torch.Tensor:
         _b, _c, h, w = x.shape

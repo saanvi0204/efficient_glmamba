@@ -11,14 +11,12 @@ from .mamba_block import LocalMamba2D, MambaBlock2D
 
 
 def _evs_undo_last(x: torch.Tensor, n_blocks: int) -> torch.Tensor:
-    """Undo the spatial transform left by the last EVSSM block so features
-    align back to the original (H, W) orientation before fusion/modulation."""
+    """Undo the spatial transform so features align back 
+    to the original (H, W) orientation before fusion/modulation."""
     last_idx = n_blocks - 1
     if last_idx % 2 == 0:
-        # last block applied transpose → undo with transpose
         return x.transpose(2, 3).contiguous()
     else:
-        # last block applied flip → undo with flip (self-inverse)
         return torch.flip(x, dims=(2, 3)).contiguous()
 
 
@@ -27,7 +25,8 @@ class GLMambaConfig:
     in_ch: int = 1
     out_ch: int = 1
     channels: int = 96
-    n_blocks: int = 4  # deform + mamba blocks count (paper uses 4)
+    n_mamba_blocks: int = 4  # Mamba depth
+    n_deform_blocks: int = 2  # halving saves ~12G FLOPs
 
 
 class GLMamba(nn.Module):
@@ -49,11 +48,11 @@ class GLMamba(nn.Module):
         self.embed_lr = PatchEmbed2x2(cfg.in_ch, cfg.channels)
         self.embed_ref = PatchEmbed2x2(cfg.in_ch, cfg.channels)
 
-        self.g_mamba = nn.ModuleList([MambaBlock2D(cfg.channels) for _ in range(cfg.n_blocks)])
-        self.l_mamba = nn.ModuleList([LocalMamba2D(cfg.channels) for _ in range(cfg.n_blocks)])
-
-        self.g_deform = nn.Sequential(*[DeformBlock(cfg.channels) for _ in range(cfg.n_blocks)])
-        self.l_deform = nn.Sequential(*[DeformBlock(cfg.channels) for _ in range(cfg.n_blocks)])
+        self.g_mamba = nn.ModuleList([MambaBlock2D(cfg.channels, k_group=4, forward_type="v052d3")  # rot90 scan
+                                      for _ in range(cfg.n_mamba_blocks)])
+        self.l_mamba = nn.ModuleList([LocalMamba2D(cfg.channels) for _ in range(cfg.n_mamba_blocks)])
+        self.g_deform = nn.Sequential(*[DeformBlock(cfg.channels)  for _ in range(cfg.n_deform_blocks)])
+        self.l_deform = nn.Sequential(*[DeformBlock(cfg.channels)  for _ in range(cfg.n_deform_blocks)])
 
         self.mod_g = Modulator(cfg.channels)
         self.mod_l = Modulator(cfg.channels)
@@ -88,8 +87,8 @@ class GLMamba(nn.Module):
         f_lr_m = f_lr
         for i, blk in enumerate(self.g_mamba):
             f_lr_m = blk(f_lr_m, block_idx=i)
-        # Undo the last EVSSM transform so f_lr_m is back in (H, W) space
-        f_lr_m = _evs_undo_last(f_lr_m, self.cfg.n_blocks)
+        # Undo the last transform so f_lr_m is back in (H, W) space
+        f_lr_m  = _evs_undo_last(f_lr_m, self.cfg.n_mamba_blocks)
         f_lr_d = self.g_deform(f_lr)
         f_lr_mod = self.mod_g(f_lr_d, f_lr_m)
 
@@ -97,15 +96,15 @@ class GLMamba(nn.Module):
         f_ref_m = f_ref
         for i, blk in enumerate(self.l_mamba):
             f_ref_m = blk(f_ref_m, block_idx=i)
-        # Undo the last EVSSM transform so f_ref_m is back in (H, W) space
-        f_ref_m = _evs_undo_last(f_ref_m, self.cfg.n_blocks)
+        # Undo the last transform so f_ref_m is back in (H, W) space
+        f_ref_m = _evs_undo_last(f_ref_m, self.cfg.n_mamba_blocks)
         f_ref_d = self.l_deform(f_ref)
         f_ref_mod = self.mod_l(f_ref_d, f_ref_m)
 
         # Fuse modalities
         f_fuse = self.fuse(f_lr_mod, f_ref_mod)
 
-        # Reconstruct SR and RecRef (paper outputs both)
+        # Reconstruct SR and RecRef
         sr_feat = self.unembed_sr(f_fuse)
         ref_feat = self.unembed_ref(f_ref_mod)
         sr = self.recon_sr(sr_feat)

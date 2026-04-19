@@ -75,39 +75,29 @@ class PatchUnembed2x2(nn.Module):
         self.proj = nn.ConvTranspose2d(in_ch, out_ch, kernel_size=2, stride=2, padding=0)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.proj(x)
-
-
-
+        return self.proj(x)          
+    
 class DeformBlock(nn.Module):
-    """
-    Deformable conv feature extractor (paper Δp, Δm) via torchvision.ops.DeformConv2d.
-    """
-
-    def __init__(self, channels: int, kernel_size: int = 3) -> None:
+    """Bottleneck: C→C//4→deformConv(C//4)→C//4→C + residual. ~7× cheaper per block."""
+    def __init__(self, channels: int, kernel_size: int = 3, bottleneck_ratio: int = 4) -> None:
         super().__init__()
-        self.channels = channels
-        self.kernel_size = kernel_size
+        bn = max(16, channels // bottleneck_ratio)     # 96//4 = 24
         self.padding = kernel_size // 2
-
-        self.offset_conv = nn.Conv2d(channels, 2 * kernel_size * kernel_size, kernel_size=3, padding=1)
-        self.mask_conv = nn.Conv2d(channels, kernel_size * kernel_size, kernel_size=3, padding=1)
-
+        self.down = nn.Conv2d(channels, bn, kernel_size=1, bias=False)
+        self.offset_conv = nn.Conv2d(bn, 2*kernel_size*kernel_size, kernel_size=3, padding=1)
+        self.mask_conv = nn.Conv2d(bn, kernel_size*kernel_size,   kernel_size=3, padding=1)
         self.deform_conv = DeformConv2d(
-            in_channels=channels,
-            out_channels=channels,
-            kernel_size=kernel_size,
-            stride=1,
-            padding=self.padding,
-            dilation=1,
-            groups=1,
-            bias=True,
-        )
-
+            in_channels=bn, out_channels=bn,
+            kernel_size=kernel_size, stride=1, padding=self.padding, bias=True)
+        self.up = nn.Conv2d(bn, channels, kernel_size=1, bias=False)
+        self.norm = nn.BatchNorm2d(channels)
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        offset = self.offset_conv(x)
-        mask = torch.sigmoid(self.mask_conv(x))
-        return self.deform_conv(x, offset, mask)
+        z = self.down(x)                # C → C//4
+        offset = self.offset_conv(z)    # deform on C/4
+        mask = torch.sigmoid(self.mask_conv(z))
+        z = self.deform_conv(z, offset, mask)
+        z = self.up(z)                  # C//4 → C
+        return F.silu(self.norm(x + z)) # residual + norm
 
 
 class Modulator(nn.Module):

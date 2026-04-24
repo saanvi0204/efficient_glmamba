@@ -68,7 +68,9 @@ class LocalMamba2D(nn.Module):
     def __init__(self, channels: int) -> None:
         super().__init__()
         self.blocks = nn.ModuleList(
-           MambaBlock2D(channels) for _ in range(4))
+           MambaBlock2D(channels, k_group=4, forward_type="v052d")  # bidi within quadrant
+           for _ in range(4)
+        )
 
     def forward(self, x: torch.Tensor, *, block_idx: int = 0) -> torch.Tensor:
         _b, _c, h, w = x.shape

@@ -15,7 +15,7 @@ class MambaBlock2D(nn.Module):
       multiply paths; channel attention; residual add.
     """
 
-    def __init__(self, channels: int, k_group: int = 4, forward_type: str = "v05") -> None:
+    def __init__(self, channels: int) -> None:
         super().__init__()
         self.channels = channels
 
@@ -29,7 +29,7 @@ class MambaBlock2D(nn.Module):
         self.p2_in = nn.Conv2d(channels, channels, kernel_size=1, bias=True)
         self.p2_dw = nn.Conv2d(channels, channels, kernel_size=3, padding=1, groups=channels, bias=True)
         self.p2_act = nn.SiLU()
-        self.ss2d = SS2D(channels, k_group=k_group, forward_type=forward_type)
+        self.ss2d = SS2D(channels)
         self.p2_norm = LayerNorm(channels, channel_first=True)
 
         self.post_gate = nn.Conv2d(channels, channels, kernel_size=1, bias=True)
@@ -68,9 +68,7 @@ class LocalMamba2D(nn.Module):
     def __init__(self, channels: int) -> None:
         super().__init__()
         self.blocks = nn.ModuleList(
-           MambaBlock2D(channels, k_group=4, forward_type="v052d")  # bidi within quadrant
-           for _ in range(4)
-        )
+           MambaBlock2D(channels) for _ in range(4))
 
     def forward(self, x: torch.Tensor, *, block_idx: int = 0) -> torch.Tensor:
         _b, _c, h, w = x.shape

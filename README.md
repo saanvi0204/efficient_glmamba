@@ -1,6 +1,6 @@
-# GL-Mamba for Brain Tumor Segmentation
+# GL-Mamba for Medical Image Super-Resolution
 
-This project implements a Mamba-based neural network architecture, named GL-Mamba, for medical image segmentation, specifically targeting the BraTS 2021 dataset for brain tumor segmentation.
+This project implements a Mamba-based neural network architecture, named GL-Mamba, for medical image super resolution, specifically targeting the BraTS 2021 dataset for brain tumor super-resolution.
 
 ## Project Structure
 
